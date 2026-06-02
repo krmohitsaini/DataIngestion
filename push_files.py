@@ -9,7 +9,7 @@ from typing import Iterable
 import oracledb
 import pandas as pd
 
-from process_files import ProcessedFile, process_directory, process_files
+from process_files import ProcessedFile, find_files, process_files
 
 
 ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
@@ -29,7 +29,16 @@ def push_files(
     uploaded_directory: str | Path | None = None,
 ) -> None:
     """Insert files into Oracle, then optionally move them to an archive folder."""
-    processed_files = _get_processed_files(file_paths)
+    source_files = _get_file_paths(file_paths)
+
+    if uploaded_directory:
+        source_files, skipped_files = _split_archived_files(
+            source_files,
+            uploaded_directory,
+        )
+        archive_files(skipped_files, uploaded_directory)
+
+    processed_files = process_files(source_files)
     if not processed_files:
         return
 
@@ -44,19 +53,51 @@ def push_files(
         archive_processed_files(processed_files, uploaded_directory)
 
 
-def _get_processed_files(
+def _get_file_paths(
     file_paths: str | Path | Iterable[str | Path],
-) -> dict[str, list[ProcessedFile]]:
-    """Process a directory path, a single file path, or multiple file paths."""
+) -> list[Path]:
+    """Return files from a directory path, a single file path, or many paths."""
     if isinstance(file_paths, (str, Path)):
         path = Path(file_paths)
 
         if path.is_dir():
-            return process_directory(path)
+            return find_files(path)
 
-        return process_files([path])
+        return [path]
 
-    return process_files(file_paths)
+    return [Path(path) for path in file_paths]
+
+
+def _split_archived_files(
+    file_paths: list[Path],
+    uploaded_directory: str | Path,
+) -> tuple[list[Path], list[Path]]:
+    """Separate new files from files whose names already exist in the archive."""
+    uploaded_path = Path(uploaded_directory)
+    uploaded_path.mkdir(parents=True, exist_ok=True)
+    new_files = []
+    skipped_files = []
+
+    for file_path in file_paths:
+        if _is_inside_directory(file_path, uploaded_path):
+            continue
+
+        if (uploaded_path / file_path.name).exists():
+            print(f"Skipped {file_path.name}: already uploaded to Oracle")
+            skipped_files.append(file_path)
+        else:
+            new_files.append(file_path)
+
+    return new_files, skipped_files
+
+
+def _is_inside_directory(file_path: Path, directory: Path) -> bool:
+    """Return whether one file is already inside a directory."""
+    try:
+        file_path.resolve().relative_to(directory.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def push_processed_files(
@@ -84,17 +125,27 @@ def archive_processed_files(
     uploaded_directory: str | Path,
 ) -> None:
     """Move successfully uploaded source files into the archive folder."""
+    file_paths = [
+        processed_file.file_path
+        for files_for_table in processed_files.values()
+        for processed_file in files_for_table
+    ]
+    archive_files(file_paths, uploaded_directory)
+
+
+def archive_files(
+    file_paths: Iterable[str | Path],
+    uploaded_directory: str | Path,
+) -> None:
+    """Move source files into the archive folder without overwriting older files."""
     uploaded_path = Path(uploaded_directory)
     uploaded_path.mkdir(parents=True, exist_ok=True)
 
-    for files_for_table in processed_files.values():
-        for processed_file in files_for_table:
-            destination = _get_archive_destination(
-                uploaded_path,
-                processed_file.file_path.name,
-            )
-            shutil.move(str(processed_file.file_path), str(destination))
-            print(f"Moved {processed_file.file_path.name} to {destination}")
+    for file_path in file_paths:
+        source_path = Path(file_path)
+        destination = _get_archive_destination(uploaded_path, source_path.name)
+        shutil.move(str(source_path), str(destination))
+        print(f"Moved {source_path.name} to {destination}")
 
 
 def _get_archive_destination(uploaded_directory: Path, file_name: str) -> Path:

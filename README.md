@@ -85,6 +85,15 @@ When `uploaded_directory` is provided, source files move to that folder only
 after all Oracle inserts commit successfully. Existing archived files are not
 overwritten; a timestamp is added to duplicate file names.
 
+Before ingestion, source file names are checked against the archive folder. If
+the same file name already exists in `Uploaded`, that source file is skipped
+with a message and moved into `Uploaded` using a timestamp suffix. Other files
+continue processing normally.
+
+Passing a folder scans CSV and Excel files recursively, including nested
+subfolders. Successfully uploaded files move into the configured archive
+folder.
+
 ## Setup
 
 Install the packages:

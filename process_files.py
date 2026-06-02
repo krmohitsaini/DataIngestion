@@ -151,14 +151,18 @@ def process_file(file_path: str | Path) -> ProcessedFile:
 def process_directory(
     input_directory: str | Path,
 ) -> dict[str, list[ProcessedFile]]:
-    """Group processed files by their target Oracle table name."""
+    """Group files from a directory and its subfolders by Oracle table name."""
+    return process_files(find_files(input_directory))
+
+
+def find_files(input_directory: str | Path) -> list[Path]:
+    """Return supported files from a directory and its subfolders."""
     input_path = Path(input_directory)
-    file_paths = (
+    return [
         file_path
-        for file_path in sorted(input_path.iterdir())
-        if file_path.suffix.lower() in SUPPORTED_EXTENSIONS
-    )
-    return process_files(file_paths)
+        for file_path in sorted(input_path.rglob("*"))
+        if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS
+    ]
 
 
 def process_files(file_paths: Iterable[str | Path]) -> dict[str, list[ProcessedFile]]:

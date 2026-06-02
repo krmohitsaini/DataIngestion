@@ -10,7 +10,7 @@ OUTLOOK_SUBJECT_FILTER = None
 ORACLE_USER = "your_username"
 ORACLE_PASSWORD = "your_password"
 ORACLE_DSN = "hostname:1521/service_name"
-downloaded_files = "Download"
+downloaded_files = "Downloaded"
 uploaded_files = "Uploaded"
 
 def main() -> None:
