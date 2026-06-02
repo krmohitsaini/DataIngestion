@@ -24,6 +24,10 @@ such as `"sample-file%"` to `APP_PREFIX_FILE_PATTERNS` in `process_files.py`.
 The `%` matches the changing date, so `sample-file20260602.csv` is inserted
 into `APP_SAMPLE_FILE`.
 
+CSV and Excel headers are sanitized before Oracle tables are created or rows
+are inserted. For example, `BP Account v111 (evar111)` becomes
+`BP_ACCOUNT_V111_EVAR111`.
+
 `process_files.py` converts each file into a `ProcessedFile` dataclass. The
 `process_files()` and `process_directory()` functions return a dictionary keyed
 by target table name:

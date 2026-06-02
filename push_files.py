@@ -73,10 +73,7 @@ def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> None
         return
 
     _validate_identifier(table_name)
-    columns = [str(column).upper() for column in dataframe.columns]
-
-    for column in columns:
-        _validate_identifier(column)
+    columns = _sanitize_column_names(dataframe.columns)
 
     if not table_exists(connection, table_name):
         create_table(connection, table_name, dataframe)
@@ -108,10 +105,9 @@ def create_table(connection, table_name: str, dataframe: pd.DataFrame) -> None:
     """Create an Oracle table using the columns and types in one DataFrame."""
     _validate_identifier(table_name)
     column_definitions = []
+    column_names = _sanitize_column_names(dataframe.columns)
 
-    for column in dataframe.columns:
-        column_name = str(column).upper()
-        _validate_identifier(column_name)
+    for column, column_name in zip(dataframe.columns, column_names):
         oracle_type = _get_oracle_type(dataframe[column])
         column_definitions.append(f"{column_name} {oracle_type}")
 
@@ -145,6 +141,34 @@ def _get_oracle_type(series: pd.Series) -> str:
 
     max_length = max(255, max_length)
     return f"VARCHAR2({max_length})"
+
+
+def _sanitize_column_names(columns) -> list[str]:
+    """Return unique Oracle-friendly column names."""
+    sanitized_columns = [_sanitize_column_name(column) for column in columns]
+
+    if len(sanitized_columns) != len(set(sanitized_columns)):
+        raise ValueError(
+            "Two or more source columns become the same Oracle column name after "
+            f"sanitization: {sanitized_columns}"
+        )
+
+    return sanitized_columns
+
+
+def _sanitize_column_name(column) -> str:
+    """Convert one source header into an Oracle-friendly column name."""
+    column_name = re.sub(r"[^A-Za-z0-9_$#]+", "_", str(column))
+    column_name = column_name.strip("_").upper()
+
+    if not column_name:
+        raise ValueError(f"Could not create an Oracle column name from: {column}")
+
+    if not column_name[0].isalpha():
+        column_name = f"COLUMN_{column_name}"
+
+    _validate_identifier(column_name)
+    return column_name
 
 
 def _validate_identifier(identifier: str) -> None:
