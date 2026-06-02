@@ -87,8 +87,10 @@ def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> None
     bind_variables = ", ".join(f":{number}" for number in range(1, len(columns) + 1))
     insert_sql = f"INSERT INTO {table_name} ({column_list}) VALUES ({bind_variables})"
 
-    clean_dataframe = dataframe.astype(object).where(pd.notna(dataframe), None)
-    rows = [tuple(row) for row in clean_dataframe.itertuples(index=False, name=None)]
+    rows = [
+        tuple(_to_oracle_value(value) for value in row)
+        for row in dataframe.itertuples(index=False, name=None)
+    ]
 
     with connection.cursor() as cursor:
         cursor.executemany(insert_sql, rows)
@@ -136,7 +138,7 @@ def _get_oracle_type(series: pd.Series) -> str:
         return "NUMBER"
 
     if pd.api.types.is_datetime64_any_dtype(series):
-        return "TIMESTAMP"
+        return "DATE"
 
     max_length = series.dropna().astype(str).str.len().max()
     max_length = 1 if pd.isna(max_length) else int(max_length)
@@ -159,6 +161,17 @@ def _sanitize_column_names(columns) -> list[str]:
         )
 
     return sanitized_columns
+
+
+def _to_oracle_value(value):
+    """Convert pandas values into values accepted by Oracle."""
+    if pd.isna(value):
+        return None
+
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime()
+
+    return value
 
 
 def _sanitize_column_name(column) -> str:

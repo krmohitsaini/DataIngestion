@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -9,6 +9,19 @@ import pandas as pd
 
 
 SUPPORTED_EXTENSIONS = {".csv", ".xls", ".xlsx"}
+DATE_FORMATS = (
+    "%Y-%m-%d",
+    "%Y%m%d",
+    "%d-%m-%Y",
+    "%d/%m/%Y",
+)
+
+# Add source-file headers that must be parsed as dates here.
+DATE_COLUMN_NAMES = {
+    "DATE",
+    "POSTING DATE",
+    "SAMPLE DATE",
+}
 
 # Add the special file patterns here. The trailing % matches the changing date.
 APP_PREFIX_FILE_PATTERNS = {
@@ -68,12 +81,56 @@ def read_file(file_path: str | Path) -> pd.DataFrame:
     extension = path.suffix.lower()
 
     if extension == ".csv":
-        return pd.read_csv(path)
+        dataframe = pd.read_csv(path)
+    elif extension in {".xls", ".xlsx"}:
+        dataframe = pd.read_excel(path)
+    else:
+        raise ValueError(f"Unsupported file type: {path.name}")
 
-    if extension in {".xls", ".xlsx"}:
-        return pd.read_excel(path)
+    return _parse_date_columns(dataframe, path)
 
-    raise ValueError(f"Unsupported file type: {path.name}")
+
+def _parse_date_columns(dataframe: pd.DataFrame, file_path: Path) -> pd.DataFrame:
+    """Parse configured source headers into pandas datetime columns."""
+    configured_columns = {column.strip().upper() for column in DATE_COLUMN_NAMES}
+
+    for column in dataframe.columns:
+        if str(column).strip().upper() not in configured_columns:
+            continue
+
+        dataframe[column] = pd.to_datetime(
+            [
+                _parse_date_value(value, file_path, str(column))
+                for value in dataframe[column]
+            ]
+        )
+
+    return dataframe
+
+
+def _parse_date_value(value, file_path: Path, column_name: str):
+    """Parse one configured date value or raise a useful error."""
+    if pd.isna(value) or isinstance(value, str) and not value.strip():
+        return pd.NaT
+
+    if isinstance(value, datetime):
+        return value
+
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+
+    value_as_text = str(value).strip()
+
+    for date_format in DATE_FORMATS:
+        for time_format in ("", " %H:%M", " %H:%M:%S"):
+            try:
+                return datetime.strptime(value_as_text, date_format + time_format)
+            except ValueError:
+                continue
+
+    raise ValueError(
+        f"Invalid date value in {file_path.name}, column {column_name}: {value!r}"
+    )
 
 
 def process_file(file_path: str | Path) -> ProcessedFile:

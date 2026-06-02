@@ -6,7 +6,7 @@ them by Oracle table name, and inserts their rows into Oracle.
 When a target table already exists, rows are appended to it. When a target
 table does not exist, `push_files.py` creates it from the current file before
 inserting rows. The inferred Oracle column types are intentionally simple:
-`NUMBER`, `NUMBER(1)`, `TIMESTAMP`, `VARCHAR2`, and `CLOB`.
+`NUMBER`, `NUMBER(1)`, `DATE`, `VARCHAR2`, and `CLOB`.
 
 Expected file names use the following pattern:
 
@@ -29,6 +29,25 @@ are inserted. For example, `BP Account v111 (evar111)` becomes
 `BP_ACCOUNT_V111_EVAR111`. Reserved or project-specific replacements can be
 added to `COLUMN_NAME_REPLACEMENTS` in `push_files.py`. By default, `DATE`
 becomes `EVENT_DATE`.
+
+Add source-file date headers to `DATE_COLUMN_NAMES` in `process_files.py`.
+Matching is case-insensitive and ignores surrounding spaces. Configured
+columns accept Excel datetime values and these text formats:
+
+```text
+YYYY-MM-DD
+YYYYMMDD
+DD-MM-YYYY
+DD/MM/YYYY
+```
+
+Each text format may also include `HH:MM` or `HH:MM:SS`. Blank values become
+Oracle nulls. Invalid non-empty values stop ingestion with the file name,
+column name, and invalid value in the error message.
+
+Configured date columns use Oracle `DATE` for newly created tables. Existing
+tables are not altered automatically. Manually alter or recreate older tables
+that were previously created with `VARCHAR2` date columns.
 
 `process_files.py` converts each file into a `ProcessedFile` dataclass. The
 `process_files()` and `process_directory()` functions return a dictionary keyed
