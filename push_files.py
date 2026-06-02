@@ -12,6 +12,11 @@ from process_files import ProcessedFile, process_directory, process_files
 
 ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
 
+# Add Oracle reserved or project-specific column replacements here.
+COLUMN_NAME_REPLACEMENTS = {
+    "DATE": "EVENT_DATE",
+}
+
 
 def push_files(
     file_paths: str | Path | Iterable[str | Path],
@@ -166,6 +171,8 @@ def _sanitize_column_name(column) -> str:
 
     if not column_name[0].isalpha():
         column_name = f"COLUMN_{column_name}"
+
+    column_name = COLUMN_NAME_REPLACEMENTS.get(column_name, column_name)
 
     _validate_identifier(column_name)
     return column_name

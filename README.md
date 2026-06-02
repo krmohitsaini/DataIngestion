@@ -26,7 +26,9 @@ into `APP_SAMPLE_FILE`.
 
 CSV and Excel headers are sanitized before Oracle tables are created or rows
 are inserted. For example, `BP Account v111 (evar111)` becomes
-`BP_ACCOUNT_V111_EVAR111`.
+`BP_ACCOUNT_V111_EVAR111`. Reserved or project-specific replacements can be
+added to `COLUMN_NAME_REPLACEMENTS` in `push_files.py`. By default, `DATE`
+becomes `EVENT_DATE`.
 
 `process_files.py` converts each file into a `ProcessedFile` dataclass. The
 `process_files()` and `process_directory()` functions return a dictionary keyed
