@@ -76,10 +76,14 @@ by target table name:
 `push_files()` accepts a folder, one file, or a list of files:
 
 ```python
-push_files("downloads", oracle_user, oracle_password, oracle_dsn)
-push_files("downloads/CUSTOMERS20260602.csv", oracle_user, oracle_password, oracle_dsn)
-push_files(downloaded_files, oracle_user, oracle_password, oracle_dsn)
+push_files("Download", oracle_user, oracle_password, oracle_dsn, "Uploaded")
+push_files("Download/CUSTOMERS20260602.csv", oracle_user, oracle_password, oracle_dsn)
+push_files(downloaded_files, oracle_user, oracle_password, oracle_dsn, "Uploaded")
 ```
+
+When `uploaded_directory` is provided, source files move to that folder only
+after all Oracle inserts commit successfully. Existing archived files are not
+overwritten; a timestamp is added to duplicate file names.
 
 ## Setup
 

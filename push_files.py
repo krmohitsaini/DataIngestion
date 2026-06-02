@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -25,8 +26,9 @@ def push_files(
     oracle_user: str,
     oracle_password: str,
     oracle_dsn: str,
+    uploaded_directory: str | Path | None = None,
 ) -> None:
-    """Process a folder, one file, or selected files and insert their rows."""
+    """Insert files into Oracle, then optionally move them to an archive folder."""
     processed_files = _get_processed_files(file_paths)
     if not processed_files:
         return
@@ -37,6 +39,9 @@ def push_files(
         dsn=oracle_dsn,
     ) as connection:
         push_processed_files(connection, processed_files)
+
+    if uploaded_directory:
+        archive_processed_files(processed_files, uploaded_directory)
 
 
 def _get_processed_files(
@@ -72,6 +77,44 @@ def push_processed_files(
     except Exception:
         connection.rollback()
         raise
+
+
+def archive_processed_files(
+    processed_files: dict[str, list[ProcessedFile]],
+    uploaded_directory: str | Path,
+) -> None:
+    """Move successfully uploaded source files into the archive folder."""
+    uploaded_path = Path(uploaded_directory)
+    uploaded_path.mkdir(parents=True, exist_ok=True)
+
+    for files_for_table in processed_files.values():
+        for processed_file in files_for_table:
+            destination = _get_archive_destination(
+                uploaded_path,
+                processed_file.file_path.name,
+            )
+            shutil.move(str(processed_file.file_path), str(destination))
+            print(f"Moved {processed_file.file_path.name} to {destination}")
+
+
+def _get_archive_destination(uploaded_directory: Path, file_name: str) -> Path:
+    """Return an unused archive path without overwriting an older upload."""
+    destination = uploaded_directory / file_name
+    if not destination.exists():
+        return destination
+
+    file_path = Path(file_name)
+    uploaded_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+    destination = uploaded_directory / f"{file_path.stem}_{uploaded_at}{file_path.suffix}"
+    duplicate_number = 1
+
+    while destination.exists():
+        destination = uploaded_directory / (
+            f"{file_path.stem}_{uploaded_at}_{duplicate_number}{file_path.suffix}"
+        )
+        duplicate_number += 1
+
+    return destination
 
 
 def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> None:
@@ -167,14 +210,15 @@ def create_table(connection, table_name: str, dataframe: pd.DataFrame) -> None:
 def _get_oracle_type(series: pd.Series) -> str:
     """Map a pandas column to a simple Oracle data type."""
     if pd.api.types.is_bool_dtype(series):
-        return "NUMBER(1)"
-
+        return "CHAR(1)"
+    """
+    # Commented these so these should go as VARCHAR2, but can be easily changed back if needed.
     if pd.api.types.is_integer_dtype(series):
         return "NUMBER"
 
     if pd.api.types.is_float_dtype(series):
         return "NUMBER"
-
+    """
     if pd.api.types.is_datetime64_any_dtype(series):
         return "DATE"
 
