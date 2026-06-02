@@ -11,17 +11,17 @@ inserting rows. The inferred Oracle column types are intentionally simple:
 Expected file names use the following pattern:
 
 ```text
-TABLE_NAME_date.csv
-CUSTOMERS_20260602.xlsx
-CUSTOMER-ORDERS_20260602.csv
+TABLE_NAMEYYYYMMDD.csv
+CUSTOMERS20260602.xlsx
+CUSTOMER-ORDERS20260602.csv
 ```
 
 Hyphens in file names are converted to underscores for Oracle table names. For
-example, `CUSTOMER-ORDERS_20260602.csv` is inserted into `CUSTOMER_ORDERS`.
+example, `CUSTOMER-ORDERS20260602.csv` is inserted into `CUSTOMER_ORDERS`.
 
 Some files can use an additional `APP_` table prefix. Add SQL-style patterns
 such as `"sample-file%"` to `APP_PREFIX_FILE_PATTERNS` in `process_files.py`.
-The `%` matches the changing date, so `sample-file_20260602.csv` is inserted
+The `%` matches the changing date, so `sample-file20260602.csv` is inserted
 into `APP_SAMPLE_FILE`.
 
 `process_files.py` converts each file into a `ProcessedFile` dataclass. The
@@ -32,7 +32,7 @@ by target table name:
 {
     "CUSTOMERS": [
         ProcessedFile(
-            file_path=Path("downloads/CUSTOMERS_20260602.xlsx"),
+            file_path=Path("downloads/CUSTOMERS20260602.xlsx"),
             table_name="CUSTOMERS",
             file_date="20260602",
             data=<pandas DataFrame>,

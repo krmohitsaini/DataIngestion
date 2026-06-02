@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -25,18 +26,20 @@ class ProcessedFile:
 
 
 def get_file_details(file_path: str | Path) -> tuple[str, str]:
-    """Return the Oracle table name and date from TABLE_NAME_date.csv."""
+    """Return the Oracle table name and date from TABLE_NAMEYYYYMMDD.csv."""
     path = Path(file_path)
+    table_name = path.stem[:-8]
+    file_date = path.stem[-8:]
 
     try:
-        table_name, file_date = path.stem.rsplit("_", maxsplit=1)
+        datetime.strptime(file_date, "%Y%m%d")
     except ValueError as error:
         raise ValueError(
-            f"Expected a file named TABLE_NAME_date.ext, received: {path.name}"
+            f"Expected a file named TABLE_NAMEYYYYMMDD.ext, received: {path.name}"
         ) from error
 
-    if not table_name or not file_date:
-        raise ValueError(f"Could not determine table name and date from: {path.name}")
+    if not table_name:
+        raise ValueError(f"Could not determine table name from: {path.name}")
 
     table_name = table_name.replace("-", "_")
 
