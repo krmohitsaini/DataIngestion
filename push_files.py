@@ -7,20 +7,20 @@ from typing import Iterable
 import oracledb
 import pandas as pd
 
-from process_files import ProcessedFile, process_files
+from process_files import ProcessedFile, process_directory, process_files
 
 
 ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
 
 
 def push_files(
-    file_paths: Iterable[str | Path],
+    file_paths: str | Path | Iterable[str | Path],
     oracle_user: str,
     oracle_password: str,
     oracle_dsn: str,
 ) -> None:
-    """Process selected files and insert their rows into Oracle."""
-    processed_files = process_files(file_paths)
+    """Process a folder, one file, or selected files and insert their rows."""
+    processed_files = _get_processed_files(file_paths)
     if not processed_files:
         return
 
@@ -30,6 +30,21 @@ def push_files(
         dsn=oracle_dsn,
     ) as connection:
         push_processed_files(connection, processed_files)
+
+
+def _get_processed_files(
+    file_paths: str | Path | Iterable[str | Path],
+) -> dict[str, list[ProcessedFile]]:
+    """Process a directory path, a single file path, or multiple file paths."""
+    if isinstance(file_paths, (str, Path)):
+        path = Path(file_paths)
+
+        if path.is_dir():
+            return process_directory(path)
+
+        return process_files([path])
+
+    return process_files(file_paths)
 
 
 def push_processed_files(

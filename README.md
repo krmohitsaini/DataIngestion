@@ -41,6 +41,14 @@ by target table name:
 }
 ```
 
+`push_files()` accepts a folder, one file, or a list of files:
+
+```python
+push_files("downloads", oracle_user, oracle_password, oracle_dsn)
+push_files("downloads/CUSTOMERS20260602.csv", oracle_user, oracle_password, oracle_dsn)
+push_files(downloaded_files, oracle_user, oracle_password, oracle_dsn)
+```
+
 ## Setup
 
 Install the packages:
