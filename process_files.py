@@ -14,6 +14,8 @@ DATE_FORMATS = (
     "%Y%m%d",
     "%d-%m-%Y",
     "%d/%m/%Y",
+    "%B %d, %Y",
+    "%b %d, %Y",
 )
 
 # Add source-file headers that must be parsed as dates here.

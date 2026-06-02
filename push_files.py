@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -11,6 +12,7 @@ from process_files import ProcessedFile, process_directory, process_files
 
 
 ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
+DATE_ADDED_COLUMN = "DATE_ADDED"
 
 # Add Oracle reserved or project-specific column replacements here.
 COLUMN_NAME_REPLACEMENTS = {
@@ -79,16 +81,23 @@ def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> None
 
     _validate_identifier(table_name)
     columns = _sanitize_column_names(dataframe.columns)
+    _validate_date_added_column(columns)
 
     if not table_exists(connection, table_name):
         create_table(connection, table_name, dataframe)
+    elif not table_column_exists(connection, table_name, DATE_ADDED_COLUMN):
+        add_date_added_column(connection, table_name)
 
-    column_list = ", ".join(columns)
-    bind_variables = ", ".join(f":{number}" for number in range(1, len(columns) + 1))
+    insert_columns = [*columns, DATE_ADDED_COLUMN]
+    column_list = ", ".join(insert_columns)
+    bind_variables = ", ".join(
+        f":{number}" for number in range(1, len(insert_columns) + 1)
+    )
     insert_sql = f"INSERT INTO {table_name} ({column_list}) VALUES ({bind_variables})"
 
+    date_added = datetime.now()
     rows = [
-        tuple(_to_oracle_value(value) for value in row)
+        tuple(_to_oracle_value(value) for value in row) + (date_added,)
         for row in dataframe.itertuples(index=False, name=None)
     ]
 
@@ -108,16 +117,45 @@ def table_exists(connection, table_name: str) -> bool:
         return cursor.fetchone()[0] > 0
 
 
+def table_column_exists(connection, table_name: str, column_name: str) -> bool:
+    """Return whether an Oracle table already contains one column."""
+    _validate_identifier(table_name)
+    _validate_identifier(column_name)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM user_tab_columns
+            WHERE table_name = :1 AND column_name = :2
+            """,
+            [table_name.upper(), column_name.upper()],
+        )
+        return cursor.fetchone()[0] > 0
+
+
+def add_date_added_column(connection, table_name: str) -> None:
+    """Add the load timestamp column to an existing Oracle table."""
+    _validate_identifier(table_name)
+
+    with connection.cursor() as cursor:
+        cursor.execute(f"ALTER TABLE {table_name} ADD {DATE_ADDED_COLUMN} DATE")
+
+    print(f"Added {DATE_ADDED_COLUMN} column to {table_name}")
+
+
 def create_table(connection, table_name: str, dataframe: pd.DataFrame) -> None:
     """Create an Oracle table using the columns and types in one DataFrame."""
     _validate_identifier(table_name)
     column_definitions = []
     column_names = _sanitize_column_names(dataframe.columns)
+    _validate_date_added_column(column_names)
 
     for column, column_name in zip(dataframe.columns, column_names):
         oracle_type = _get_oracle_type(dataframe[column])
         column_definitions.append(f"{column_name} {oracle_type}")
 
+    column_definitions.append(f"{DATE_ADDED_COLUMN} DATE")
     create_sql = f"CREATE TABLE {table_name} ({', '.join(column_definitions)})"
 
     with connection.cursor() as cursor:
@@ -161,6 +199,13 @@ def _sanitize_column_names(columns) -> list[str]:
         )
 
     return sanitized_columns
+
+
+def _validate_date_added_column(columns: list[str]) -> None:
+    if DATE_ADDED_COLUMN in columns:
+        raise ValueError(
+            f"Source files cannot contain the reserved column: {DATE_ADDED_COLUMN}"
+        )
 
 
 def _to_oracle_value(value):

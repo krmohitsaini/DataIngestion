@@ -8,6 +8,12 @@ table does not exist, `push_files.py` creates it from the current file before
 inserting rows. The inferred Oracle column types are intentionally simple:
 `NUMBER`, `NUMBER(1)`, `DATE`, `VARCHAR2`, and `CLOB`.
 
+Each inserted row includes a `DATE_ADDED` Oracle `DATE` value showing when its
+source file was pushed. Newly created tables include this audit column.
+Existing tables receive the column automatically if it is missing. Source
+files cannot contain a column named `DATE_ADDED`, because that name is reserved
+for the ingestion timestamp.
+
 Expected file names use the following pattern:
 
 ```text
@@ -39,6 +45,7 @@ YYYY-MM-DD
 YYYYMMDD
 DD-MM-YYYY
 DD/MM/YYYY
+Month DD, YYYY
 ```
 
 Each text format may also include `HH:MM` or `HH:MM:SS`. Blank values become
