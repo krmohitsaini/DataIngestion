@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -56,12 +57,21 @@ def get_file_details(file_path: str | Path) -> tuple[str, str]:
     if not table_name:
         raise ValueError(f"Could not determine table name from: {path.name}")
 
-    table_name = table_name.replace("-", "_")
+    table_name = _normalize_table_name(table_name)
+    if not table_name:
+        raise ValueError(f"Could not determine table name from: {path.name}")
 
     if _needs_app_prefix(path.stem):
         table_name = f"APP_{table_name}"
 
     return table_name.upper(), file_date
+
+
+def _normalize_table_name(table_name: str) -> str:
+    """Convert file-name separators into a clean Oracle table name."""
+    table_name = table_name.replace("-", "_")
+    table_name = re.sub(r"_+", "_", table_name)
+    return table_name.strip("_")
 
 
 def _needs_app_prefix(file_stem: str) -> bool:
