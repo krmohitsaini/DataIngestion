@@ -9,6 +9,12 @@ import pandas as pd
 
 SUPPORTED_EXTENSIONS = {".csv", ".xls", ".xlsx"}
 
+# Add the special file patterns here. The trailing % matches the changing date.
+APP_PREFIX_FILE_PATTERNS = {
+    "sample-file%",
+    "another_sample_file%",
+}
+
 
 @dataclass
 class ProcessedFile:
@@ -33,7 +39,24 @@ def get_file_details(file_path: str | Path) -> tuple[str, str]:
         raise ValueError(f"Could not determine table name and date from: {path.name}")
 
     table_name = table_name.replace("-", "_")
+
+    if _needs_app_prefix(path.stem):
+        table_name = f"APP_{table_name}"
+
     return table_name.upper(), file_date
+
+
+def _needs_app_prefix(file_stem: str) -> bool:
+    """Return whether a source file should use an APP_ table prefix."""
+    file_stem = file_stem.lower()
+
+    for pattern in APP_PREFIX_FILE_PATTERNS:
+        file_name_prefix = pattern.removesuffix("%").lower()
+
+        if file_stem.startswith(file_name_prefix):
+            return True
+
+    return False
 
 
 def read_file(file_path: str | Path) -> pd.DataFrame:

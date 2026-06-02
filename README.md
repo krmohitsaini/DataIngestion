@@ -19,6 +19,11 @@ CUSTOMER-ORDERS_20260602.csv
 Hyphens in file names are converted to underscores for Oracle table names. For
 example, `CUSTOMER-ORDERS_20260602.csv` is inserted into `CUSTOMER_ORDERS`.
 
+Some files can use an additional `APP_` table prefix. Add SQL-style patterns
+such as `"sample-file%"` to `APP_PREFIX_FILE_PATTERNS` in `process_files.py`.
+The `%` matches the changing date, so `sample-file_20260602.csv` is inserted
+into `APP_SAMPLE_FILE`.
+
 `process_files.py` converts each file into a `ProcessedFile` dataclass. The
 `process_files()` and `process_directory()` functions return a dictionary keyed
 by target table name:

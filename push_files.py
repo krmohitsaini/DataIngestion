@@ -7,29 +7,10 @@ from typing import Iterable
 import oracledb
 import pandas as pd
 
-from process_files import ProcessedFile, process_directory, process_files
+from process_files import ProcessedFile, process_files
 
 
 ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
-
-
-def push_downloaded_files(
-    download_directory: str | Path,
-    oracle_user: str,
-    oracle_password: str,
-    oracle_dsn: str,
-) -> None:
-    """Process downloaded files and insert their rows into Oracle."""
-    processed_files = process_directory(download_directory)
-    if not processed_files:
-        return
-
-    with oracledb.connect(
-        user=oracle_user,
-        password=oracle_password,
-        dsn=oracle_dsn,
-    ) as connection:
-        push_processed_files(connection, processed_files)
 
 
 def push_files(
