@@ -79,9 +79,9 @@ by target table name:
 `push_files()` accepts a folder, one file, or a list of files:
 
 ```python
-push_files("Download", oracle_user, oracle_password, oracle_dsn, "Uploaded")
+push_files("Download", oracle_user, oracle_password, oracle_dsn, "Uploaded", "Log")
 push_files("Download/CUSTOMERS20260602.csv", oracle_user, oracle_password, oracle_dsn)
-push_files(downloaded_files, oracle_user, oracle_password, oracle_dsn, "Uploaded")
+push_files(downloaded_files, oracle_user, oracle_password, oracle_dsn, "Uploaded", "Log")
 ```
 
 When `uploaded_directory` is provided, source files move to that folder only
@@ -92,6 +92,18 @@ Before ingestion, source file names are checked against the archive folder. If
 the same file name already exists in `Uploaded`, that source file is skipped
 with a message and moved into `Uploaded` using a timestamp suffix. Other files
 continue processing normally.
+
+When `log_directory` is provided, successful uploads are appended to
+`Log/upload_log.txt`:
+
+```text
+CUSTOMERS20260602.csv -> Created table -> CUSTOMERS
+ORDERS20260602.csv -> appended -> ORDERS
+```
+
+Before ingestion, source file names are also checked against this log. If the
+same file name already exists in the log, the file is skipped, moved to
+`Uploaded` when an archive folder is configured, and other files continue.
 
 Passing a folder scans CSV and Excel files recursively, including nested
 subfolders. Successfully uploaded files move into the configured archive

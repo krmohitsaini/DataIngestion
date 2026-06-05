@@ -14,6 +14,9 @@ from process_files import ProcessedFile, find_files, process_files
 
 ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
 DATE_ADDED_COLUMN = "DATE_ADDED"
+UPLOAD_LOG_FILE = "upload_log.txt"
+ACTION_CREATED_TABLE = "Created table"
+ACTION_APPENDED = "appended"
 
 # Add Oracle reserved or project-specific column replacements here.
 COLUMN_NAME_REPLACEMENTS = {
@@ -27,6 +30,7 @@ def push_files(
     oracle_password: str,
     oracle_dsn: str,
     uploaded_directory: str | Path | None = None,
+    log_directory: str | Path | None = None,
 ) -> None:
     """Insert files into Oracle, then optionally move them to an archive folder."""
     source_files = _get_file_paths(file_paths)
@@ -36,7 +40,13 @@ def push_files(
             source_files,
             uploaded_directory,
         )
-        archive_files(skipped_files, uploaded_directory)
+        archive_files(skipped_files, uploaded_directory, force_rename=True)
+
+    if log_directory:
+        source_files, skipped_files = _split_logged_files(source_files, log_directory)
+
+        if uploaded_directory:
+            archive_files(skipped_files, uploaded_directory, force_rename=True)
 
     processed_files = process_files(source_files)
     if not processed_files:
@@ -47,7 +57,10 @@ def push_files(
         password=oracle_password,
         dsn=oracle_dsn,
     ) as connection:
-        push_processed_files(connection, processed_files)
+        upload_log_entries = push_processed_files(connection, processed_files)
+
+    if log_directory:
+        append_upload_log(upload_log_entries, log_directory)
 
     if uploaded_directory:
         archive_processed_files(processed_files, uploaded_directory)
@@ -91,6 +104,64 @@ def _split_archived_files(
     return new_files, skipped_files
 
 
+def _split_logged_files(
+    file_paths: list[Path],
+    log_directory: str | Path,
+) -> tuple[list[Path], list[Path]]:
+    """Separate new files from files already recorded in the upload log."""
+    uploaded_file_names = read_logged_file_names(log_directory)
+    new_files = []
+    skipped_files = []
+
+    for file_path in file_paths:
+        if file_path.name in uploaded_file_names:
+            print(f"Skipped {file_path.name}: already found in upload log")
+            skipped_files.append(file_path)
+        else:
+            new_files.append(file_path)
+
+    return new_files, skipped_files
+
+
+def read_logged_file_names(log_directory: str | Path) -> set[str]:
+    """Return file names already present in the upload log."""
+    log_path = _get_upload_log_path(log_directory)
+    if not log_path.exists():
+        return set()
+
+    uploaded_file_names = set()
+
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+
+        file_name = line.split(" -> ", maxsplit=1)[0].strip()
+        if file_name:
+            uploaded_file_names.add(file_name)
+
+    return uploaded_file_names
+
+
+def append_upload_log(
+    upload_log_entries: list[tuple[str, str, str]],
+    log_directory: str | Path,
+) -> None:
+    """Append successful upload entries to the upload log file."""
+    if not upload_log_entries:
+        return
+
+    log_path = _get_upload_log_path(log_directory)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with log_path.open("a", encoding="utf-8") as log_file:
+        for file_name, action, table_name in upload_log_entries:
+            log_file.write(f"{file_name} -> {action} -> {table_name}\n")
+
+
+def _get_upload_log_path(log_directory: str | Path) -> Path:
+    return Path(log_directory) / UPLOAD_LOG_FILE
+
+
 def _is_inside_directory(file_path: Path, directory: Path) -> bool:
     """Return whether one file is already inside a directory."""
     try:
@@ -103,18 +174,25 @@ def _is_inside_directory(file_path: Path, directory: Path) -> bool:
 def push_processed_files(
     connection,
     processed_files: dict[str, list[ProcessedFile]],
-) -> None:
+) -> list[tuple[str, str, str]]:
     """Insert all processed files and commit once everything succeeds."""
+    upload_log_entries = []
+
     try:
         for table_name, files_for_table in processed_files.items():
             for processed_file in files_for_table:
-                push_dataframe(connection, table_name, processed_file.data)
+                action = push_dataframe(connection, table_name, processed_file.data)
+                if action:
+                    upload_log_entries.append(
+                        (processed_file.file_path.name, action, table_name)
+                    )
                 print(
                     f"Inserted {len(processed_file.data)} rows from "
                     f"{processed_file.file_path.name} into {table_name}"
                 )
 
         connection.commit()
+        return upload_log_entries
     except Exception:
         connection.rollback()
         raise
@@ -136,6 +214,7 @@ def archive_processed_files(
 def archive_files(
     file_paths: Iterable[str | Path],
     uploaded_directory: str | Path,
+    force_rename: bool = False,
 ) -> None:
     """Move source files into the archive folder without overwriting older files."""
     uploaded_path = Path(uploaded_directory)
@@ -143,15 +222,23 @@ def archive_files(
 
     for file_path in file_paths:
         source_path = Path(file_path)
-        destination = _get_archive_destination(uploaded_path, source_path.name)
+        destination = _get_archive_destination(
+            uploaded_path,
+            source_path.name,
+            force_rename=force_rename,
+        )
         shutil.move(str(source_path), str(destination))
         print(f"Moved {source_path.name} to {destination}")
 
 
-def _get_archive_destination(uploaded_directory: Path, file_name: str) -> Path:
+def _get_archive_destination(
+    uploaded_directory: Path,
+    file_name: str,
+    force_rename: bool = False,
+) -> Path:
     """Return an unused archive path without overwriting an older upload."""
     destination = uploaded_directory / file_name
-    if not destination.exists():
+    if not force_rename and not destination.exists():
         return destination
 
     file_path = Path(file_name)
@@ -168,10 +255,10 @@ def _get_archive_destination(uploaded_directory: Path, file_name: str) -> Path:
     return destination
 
 
-def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> None:
+def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> str | None:
     """Create the target table when needed, then insert one DataFrame."""
     if dataframe.empty:
-        return
+        return None
 
     _validate_identifier(table_name)
     columns = _sanitize_column_names(dataframe.columns)
@@ -179,8 +266,12 @@ def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> None
 
     if not table_exists(connection, table_name):
         create_table(connection, table_name, dataframe)
+        action = ACTION_CREATED_TABLE
     elif not table_column_exists(connection, table_name, DATE_ADDED_COLUMN):
         add_date_added_column(connection, table_name)
+        action = ACTION_APPENDED
+    else:
+        action = ACTION_APPENDED
 
     insert_columns = [*columns, DATE_ADDED_COLUMN]
     column_list = ", ".join(insert_columns)
@@ -197,6 +288,8 @@ def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> None
 
     with connection.cursor() as cursor:
         cursor.executemany(insert_sql, rows)
+
+    return action
 
 
 def table_exists(connection, table_name: str) -> bool:
