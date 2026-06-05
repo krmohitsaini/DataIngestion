@@ -97,8 +97,8 @@ When `log_directory` is provided, successful uploads are appended to
 `Log/upload_log.txt`:
 
 ```text
-2026-06-05 13:30:00 : CUSTOMERS20260602.csv -> Created table -> CUSTOMERS
-2026-06-05 13:31:00 : ORDERS20260602.csv -> Appended -> ORDERS
+2026-06-05 13:30:00 : CUSTOMERS20260602.csv -> Created table -> 250 rows -> CUSTOMERS
+2026-06-05 13:31:00 : ORDERS20260602.csv -> Appended -> 120 rows -> ORDERS
 2026-06-05 13:32:00 : CUSTOMERS20260602.csv -> Skipped
 ```
 
