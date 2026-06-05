@@ -106,6 +106,20 @@ Before ingestion, source file names are also checked against this log. If the
 same file name already exists in the log, the file is skipped, moved to
 `Uploaded` when an archive folder is configured, and other files continue.
 
+The same `Log` folder also contains `daily_file_status.xlsx`. It tracks
+date-stripped file groups by the `YYYYMMDD` date from each file name:
+
+```text
+Files       2026-06-05  2026-06-06
+CUSTOMERS   Y           N
+ORDERS      N           Y
+```
+
+New file groups are added as rows. New file dates are added as columns. A group
+starts as `N` for that file date, then changes to `Y` once that dated file
+group is pushed successfully. If the process runs again later with missing
+files for the same file date, existing `N` values can turn into `Y`.
+
 Passing a folder scans CSV and Excel files recursively, including nested
 subfolders. Successfully uploaded files move into the configured archive
 folder.

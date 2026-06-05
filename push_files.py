@@ -9,12 +9,13 @@ from typing import Iterable
 import oracledb
 import pandas as pd
 
-from process_files import ProcessedFile, find_files, process_files
+from process_files import ProcessedFile, find_files, get_file_details, process_files
 
 
 ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
 DATE_ADDED_COLUMN = "DATE_ADDED"
 UPLOAD_LOG_FILE = "upload_log.txt"
+DAILY_STATUS_FILE = "daily_file_status.xlsx"
 ACTION_CREATED_TABLE = "Created table"
 ACTION_APPENDED = "Appended"
 ACTION_SKIPPED = "Skipped"
@@ -35,6 +36,7 @@ def push_files(
 ) -> None:
     """Insert files into Oracle, then optionally move them to an archive folder."""
     source_files = _get_file_paths(file_paths)
+    attempted_files = list(source_files)
     skipped_log_entries = []
 
     if uploaded_directory:
@@ -56,6 +58,8 @@ def push_files(
 
     processed_files = process_files(source_files)
     if not processed_files:
+        if log_directory:
+            safe_update_daily_status_log(attempted_files, [], log_directory)
         return
 
     with oracledb.connect(
@@ -67,6 +71,7 @@ def push_files(
 
     if log_directory:
         append_upload_log(upload_log_entries, log_directory)
+        safe_update_daily_status_log(attempted_files, upload_log_entries, log_directory)
 
     if uploaded_directory:
         archive_processed_files(processed_files, uploaded_directory)
@@ -162,6 +167,124 @@ def append_upload_log(
     with log_path.open("a", encoding="utf-8") as log_file:
         for file_name, action, table_name in upload_log_entries:
             log_file.write(_format_upload_log_entry(file_name, action, table_name))
+
+
+def update_daily_status_log(
+    attempted_files: Iterable[str | Path],
+    upload_log_entries: list[tuple[str, str, str | None]],
+    log_directory: str | Path,
+) -> None:
+    """Update the Y/N workbook using dates parsed from file names."""
+    status_path = Path(log_directory) / DAILY_STATUS_FILE
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+
+    workbook = _open_status_workbook(status_path)
+    worksheet = workbook.active
+    worksheet.title = "Daily Status"
+
+    _ensure_status_headers(worksheet)
+    attempted_status = _get_attempted_status_entries(attempted_files)
+    successful_status = _get_successful_status_entries(upload_log_entries)
+
+    for file_group, file_date in sorted(attempted_status | successful_status):
+        date_column = _get_or_create_date_column(worksheet, file_date)
+        row_number = _get_or_create_status_row(worksheet, file_group)
+
+        if worksheet.cell(row=row_number, column=date_column).value is None:
+            worksheet.cell(row=row_number, column=date_column).value = "N"
+
+        if (file_group, file_date) in successful_status:
+            worksheet.cell(row=row_number, column=date_column).value = "Y"
+
+    workbook.save(status_path)
+
+
+def safe_update_daily_status_log(
+    attempted_files: Iterable[str | Path],
+    upload_log_entries: list[tuple[str, str, str | None]],
+    log_directory: str | Path,
+) -> None:
+    """Update the daily workbook without blocking archive cleanup."""
+    try:
+        update_daily_status_log(attempted_files, upload_log_entries, log_directory)
+    except Exception as error:
+        print(f"Could not update daily status workbook: {error}")
+
+
+def _open_status_workbook(status_path: Path):
+    try:
+        from openpyxl import Workbook, load_workbook
+    except ImportError as error:
+        raise RuntimeError(
+            "Daily status workbook requires openpyxl. "
+            "Install dependencies with: pip install -r requirements.txt"
+        ) from error
+
+    if status_path.exists():
+        return load_workbook(status_path)
+
+    return Workbook()
+
+
+def _ensure_status_headers(worksheet) -> None:
+    if worksheet.cell(row=1, column=1).value != "Files":
+        worksheet.cell(row=1, column=1).value = "Files"
+
+
+def _get_or_create_date_column(worksheet, file_date: str) -> int:
+    for column_number in range(2, worksheet.max_column + 1):
+        if worksheet.cell(row=1, column=column_number).value == file_date:
+            return column_number
+
+    column_number = worksheet.max_column + 1
+    worksheet.cell(row=1, column=column_number).value = file_date
+
+    for row_number in range(2, worksheet.max_row + 1):
+        worksheet.cell(row=row_number, column=column_number).value = "N"
+
+    return column_number
+
+
+def _get_attempted_status_entries(
+    attempted_files: Iterable[str | Path],
+) -> set[tuple[str, str]]:
+    return {
+        _get_file_status_key(file_path)
+        for file_path in attempted_files
+    }
+
+
+def _get_successful_status_entries(
+    upload_log_entries: list[tuple[str, str, str | None]],
+) -> set[tuple[str, str]]:
+    return {
+        _get_file_status_key(file_name)
+        for file_name, action, _table_name in upload_log_entries
+        if action != ACTION_SKIPPED
+    }
+
+
+def _get_or_create_status_row(worksheet, file_group: str) -> int:
+    for row_number in range(2, worksheet.max_row + 1):
+        if worksheet.cell(row=row_number, column=1).value == file_group:
+            return row_number
+
+    row_number = worksheet.max_row + 1
+    worksheet.cell(row=row_number, column=1).value = file_group
+
+    for column_number in range(2, worksheet.max_column + 1):
+        worksheet.cell(row=row_number, column=column_number).value = "N"
+
+    return row_number
+
+
+def _get_file_status_key(file_path: str | Path) -> tuple[str, str]:
+    table_name, file_date = get_file_details(file_path)
+    return table_name, _format_file_date(file_date)
+
+
+def _format_file_date(file_date: str) -> str:
+    return datetime.strptime(file_date, "%Y%m%d").strftime("%Y-%m-%d")
 
 
 def _get_skipped_log_entries(
