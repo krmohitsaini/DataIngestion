@@ -16,7 +16,8 @@ ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
 DATE_ADDED_COLUMN = "DATE_ADDED"
 UPLOAD_LOG_FILE = "upload_log.txt"
 ACTION_CREATED_TABLE = "Created table"
-ACTION_APPENDED = "appended"
+ACTION_APPENDED = "Appended"
+ACTION_SKIPPED = "Skipped"
 
 # Add Oracle reserved or project-specific column replacements here.
 COLUMN_NAME_REPLACEMENTS = {
@@ -34,6 +35,7 @@ def push_files(
 ) -> None:
     """Insert files into Oracle, then optionally move them to an archive folder."""
     source_files = _get_file_paths(file_paths)
+    skipped_log_entries = []
 
     if uploaded_directory:
         source_files, skipped_files = _split_archived_files(
@@ -41,12 +43,16 @@ def push_files(
             uploaded_directory,
         )
         archive_files(skipped_files, uploaded_directory, force_rename=True)
+        skipped_log_entries.extend(_get_skipped_log_entries(skipped_files))
 
     if log_directory:
         source_files, skipped_files = _split_logged_files(source_files, log_directory)
 
         if uploaded_directory:
             archive_files(skipped_files, uploaded_directory, force_rename=True)
+
+        skipped_log_entries.extend(_get_skipped_log_entries(skipped_files))
+        append_upload_log(skipped_log_entries, log_directory)
 
     processed_files = process_files(source_files)
     if not processed_files:
@@ -135,7 +141,7 @@ def read_logged_file_names(log_directory: str | Path) -> set[str]:
         if not line.strip():
             continue
 
-        file_name = line.split(" -> ", maxsplit=1)[0].strip()
+        file_name = _get_logged_file_name(line)
         if file_name:
             uploaded_file_names.add(file_name)
 
@@ -143,10 +149,10 @@ def read_logged_file_names(log_directory: str | Path) -> set[str]:
 
 
 def append_upload_log(
-    upload_log_entries: list[tuple[str, str, str]],
+    upload_log_entries: list[tuple[str, str, str | None]],
     log_directory: str | Path,
 ) -> None:
-    """Append successful upload entries to the upload log file."""
+    """Append upload or skip entries to the upload log file."""
     if not upload_log_entries:
         return
 
@@ -155,7 +161,35 @@ def append_upload_log(
 
     with log_path.open("a", encoding="utf-8") as log_file:
         for file_name, action, table_name in upload_log_entries:
-            log_file.write(f"{file_name} -> {action} -> {table_name}\n")
+            log_file.write(_format_upload_log_entry(file_name, action, table_name))
+
+
+def _get_skipped_log_entries(
+    file_paths: Iterable[Path],
+) -> list[tuple[str, str, str | None]]:
+    return [(file_path.name, ACTION_SKIPPED, None) for file_path in file_paths]
+
+
+def _get_logged_file_name(line: str) -> str:
+    log_entry = line.strip()
+    if " : " in log_entry:
+        log_entry = log_entry.split(" : ", maxsplit=1)[1].strip()
+
+    return log_entry.split(" -> ", maxsplit=1)[0].strip()
+
+
+def _format_upload_log_entry(
+    file_name: str,
+    action: str,
+    table_name: str | None,
+) -> str:
+    logged_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"{logged_at} : {file_name} -> {action}"
+
+    if table_name:
+        log_entry = f"{log_entry} -> {table_name}"
+
+    return f"{log_entry}\n"
 
 
 def _get_upload_log_path(log_directory: str | Path) -> Path:
@@ -174,7 +208,7 @@ def _is_inside_directory(file_path: Path, directory: Path) -> bool:
 def push_processed_files(
     connection,
     processed_files: dict[str, list[ProcessedFile]],
-) -> list[tuple[str, str, str]]:
+) -> list[tuple[str, str, str | None]]:
     """Insert all processed files and commit once everything succeeds."""
     upload_log_entries = []
 

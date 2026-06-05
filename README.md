@@ -97,8 +97,9 @@ When `log_directory` is provided, successful uploads are appended to
 `Log/upload_log.txt`:
 
 ```text
-CUSTOMERS20260602.csv -> Created table -> CUSTOMERS
-ORDERS20260602.csv -> appended -> ORDERS
+2026-06-05 13:30:00 : CUSTOMERS20260602.csv -> Created table -> CUSTOMERS
+2026-06-05 13:31:00 : ORDERS20260602.csv -> Appended -> ORDERS
+2026-06-05 13:32:00 : CUSTOMERS20260602.csv -> Skipped
 ```
 
 Before ingestion, source file names are also checked against this log. If the
