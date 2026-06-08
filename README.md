@@ -59,6 +59,17 @@ Configured date columns use Oracle `DATE` for newly created tables. Existing
 tables are not altered automatically. Manually alter or recreate older tables
 that were previously created with `VARCHAR2` date columns.
 
+Some source columns can be renamed and left-padded with zeroes before Oracle
+upload. Add them to `COLUMN_TRANSFORMS` in `process_files.py`:
+
+```python
+COLUMN_TRANSFORMS = {
+    "Source Account": {"name": "ACCOUNT_ID", "length": 10},
+}
+```
+
+For example, source value `12345` becomes `0000012345`. Blank values stay null.
+
 `process_files.py` converts each file into a `ProcessedFile` dataclass. The
 `process_files()` and `process_directory()` functions return a dictionary keyed
 by target table name:

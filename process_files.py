@@ -26,6 +26,13 @@ DATE_COLUMN_NAMES = {
     "SAMPLE DATE",
 }
 
+# Add source columns that need a fixed name and left-zero padding here.
+# Format: "source column name": {"name": "target column name", "length": total_length}
+COLUMN_TRANSFORMS = {
+    "Sample Account": {"name": "ACCOUNT_ID", "length": 10},
+    "Sample Customer": {"name": "CUSTOMER_ID", "length": 8},
+}
+
 # Add the special file patterns here. The trailing % matches the changing date.
 APP_PREFIX_FILE_PATTERNS = {
     "sample-file%",
@@ -99,7 +106,55 @@ def read_file(file_path: str | Path) -> pd.DataFrame:
     else:
         raise ValueError(f"Unsupported file type: {path.name}")
 
+    dataframe = _apply_column_transforms(dataframe)
     return _parse_date_columns(dataframe, path)
+
+
+def _apply_column_transforms(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Rename configured columns and left-pad their non-empty values with zeroes."""
+    source_columns = _get_source_column_lookup(dataframe.columns)
+
+    for configured_column, transform in COLUMN_TRANSFORMS.items():
+        source_column = source_columns.get(configured_column.strip().upper())
+        if source_column is None:
+            continue
+
+        target_column = transform["name"]
+        target_length = int(transform["length"])
+
+        if target_column != source_column and target_column in dataframe.columns:
+            raise ValueError(
+                f"Cannot rename {source_column} to {target_column}: "
+                "target column already exists"
+            )
+
+        dataframe[source_column] = dataframe[source_column].apply(
+            lambda value: _left_pad_value(value, target_length)
+        )
+        dataframe = dataframe.rename(columns={source_column: target_column})
+
+    return dataframe
+
+
+def _get_source_column_lookup(columns) -> dict[str, str]:
+    """Return source columns by case-insensitive trimmed name."""
+    return {
+        str(column).strip().upper(): column
+        for column in columns
+    }
+
+
+def _left_pad_value(value, target_length: int):
+    """Left-pad one value with zeroes while preserving blanks as null."""
+    if pd.isna(value) or isinstance(value, str) and not value.strip():
+        return pd.NA
+
+    value_as_text = str(value).strip()
+
+    if value_as_text.endswith(".0"):
+        value_as_text = value_as_text[:-2]
+
+    return value_as_text.zfill(target_length)
 
 
 def _parse_date_columns(dataframe: pd.DataFrame, file_path: Path) -> pd.DataFrame:
