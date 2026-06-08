@@ -19,6 +19,7 @@ DAILY_STATUS_FILE = "daily_file_status.xlsx"
 ACTION_CREATED_TABLE = "Created table"
 ACTION_APPENDED = "Appended"
 ACTION_SKIPPED = "Skipped"
+ACTION_INVALID_NAME = "Invalid name"
 
 # Add Oracle reserved or project-specific column replacements here.
 COLUMN_NAME_REPLACEMENTS = {
@@ -33,11 +34,22 @@ def push_files(
     oracle_dsn: str,
     uploaded_directory: str | Path | None = None,
     log_directory: str | Path | None = None,
+    invalid_directory: str | Path | None = None,
 ) -> None:
     """Insert files into Oracle, then optionally move them to an archive folder."""
     source_files = _get_file_paths(file_paths)
-    attempted_files = list(source_files)
     skipped_log_entries = []
+
+    source_files, invalid_files = _split_invalid_files(source_files)
+    invalid_log_entries = _get_invalid_log_entries(invalid_files)
+
+    if invalid_directory:
+        archive_files(invalid_files, invalid_directory, force_rename=True)
+
+    if log_directory:
+        append_upload_log(invalid_log_entries, log_directory)
+
+    attempted_files = list(source_files)
 
     if uploaded_directory:
         source_files, skipped_files = _split_archived_files(
@@ -132,6 +144,23 @@ def _split_logged_files(
             new_files.append(file_path)
 
     return new_files, skipped_files
+
+
+def _split_invalid_files(file_paths: list[Path]) -> tuple[list[Path], list[Path]]:
+    """Separate files with valid expected names from invalid file names."""
+    valid_files = []
+    invalid_files = []
+
+    for file_path in file_paths:
+        try:
+            get_file_details(file_path)
+        except ValueError as error:
+            print(f"Skipped {file_path.name}: invalid file name ({error})")
+            invalid_files.append(file_path)
+        else:
+            valid_files.append(file_path)
+
+    return valid_files, invalid_files
 
 
 def read_logged_file_names(log_directory: str | Path) -> set[str]:
@@ -268,7 +297,7 @@ def _get_successful_status_entries(
     return {
         _get_file_status_key(file_name)
         for file_name, _rows_read, action, _rows_added, _table_name in upload_log_entries
-        if action != ACTION_SKIPPED
+        if action in {ACTION_CREATED_TABLE, ACTION_APPENDED}
     }
 
 
@@ -300,6 +329,15 @@ def _get_skipped_log_entries(
 ) -> list[tuple[str, int | None, str, int | None, str | None]]:
     return [
         (file_path.name, None, ACTION_SKIPPED, None, None)
+        for file_path in file_paths
+    ]
+
+
+def _get_invalid_log_entries(
+    file_paths: Iterable[Path],
+) -> list[tuple[str, int | None, str, int | None, str | None]]:
+    return [
+        (file_path.name, None, ACTION_INVALID_NAME, None, ACTION_SKIPPED)
         for file_path in file_paths
     ]
 

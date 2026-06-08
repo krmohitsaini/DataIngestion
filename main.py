@@ -13,6 +13,7 @@ ORACLE_DSN = "hostname:1521/service_name"
 downloaded_files = "Downloaded"
 uploaded_files = "Uploaded"
 log_files = "Log"
+invalid_files = "Invalid"
 
 def main() -> None:
     """
@@ -31,6 +32,7 @@ def main() -> None:
         oracle_dsn=ORACLE_DSN,
         uploaded_directory=uploaded_files,
         log_directory=log_files,
+        invalid_directory=invalid_files,
     )
 
 

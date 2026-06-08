@@ -100,7 +100,12 @@ When `log_directory` is provided, successful uploads are appended to
 2026-06-05 13:30:00 : CUSTOMERS20260602.csv -> 250 rows read -> Created table -> 250 rows added -> CUSTOMERS
 2026-06-05 13:31:00 : ORDERS20260602.csv -> 120 rows read -> Appended -> 120 rows added -> ORDERS
 2026-06-05 13:32:00 : CUSTOMERS20260602.csv -> Skipped
+2026-06-05 13:33:00 : BadFile.csv -> Invalid name -> Skipped
 ```
+
+Files whose names do not match the expected `TABLE_NAMEYYYYMMDD.ext` pattern are
+skipped, logged as `Invalid name -> Skipped`, and moved to the configured
+`Invalid` folder. Other files continue processing normally.
 
 Before ingestion, source file names are also checked against this log. If the
 same file name already exists in the log, the file is skipped, moved to
