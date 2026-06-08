@@ -154,7 +154,7 @@ def read_logged_file_names(log_directory: str | Path) -> set[str]:
 
 
 def append_upload_log(
-    upload_log_entries: list[tuple[str, str, int | None, str | None]],
+    upload_log_entries: list[tuple[str, int | None, str, int | None, str | None]],
     log_directory: str | Path,
 ) -> None:
     """Append upload or skip entries to the upload log file."""
@@ -165,15 +165,21 @@ def append_upload_log(
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     with log_path.open("a", encoding="utf-8") as log_file:
-        for file_name, action, row_count, table_name in upload_log_entries:
+        for file_name, rows_read, action, rows_added, table_name in upload_log_entries:
             log_file.write(
-                _format_upload_log_entry(file_name, action, row_count, table_name)
+                _format_upload_log_entry(
+                    file_name,
+                    rows_read,
+                    action,
+                    rows_added,
+                    table_name,
+                )
             )
 
 
 def update_daily_status_log(
     attempted_files: Iterable[str | Path],
-    upload_log_entries: list[tuple[str, str, int | None, str | None]],
+    upload_log_entries: list[tuple[str, int | None, str, int | None, str | None]],
     log_directory: str | Path,
 ) -> None:
     """Update the Y/N workbook using dates parsed from file names."""
@@ -203,7 +209,7 @@ def update_daily_status_log(
 
 def safe_update_daily_status_log(
     attempted_files: Iterable[str | Path],
-    upload_log_entries: list[tuple[str, str, int | None, str | None]],
+    upload_log_entries: list[tuple[str, int | None, str, int | None, str | None]],
     log_directory: str | Path,
 ) -> None:
     """Update the daily workbook without blocking archive cleanup."""
@@ -257,11 +263,11 @@ def _get_attempted_status_entries(
 
 
 def _get_successful_status_entries(
-    upload_log_entries: list[tuple[str, str, int | None, str | None]],
+    upload_log_entries: list[tuple[str, int | None, str, int | None, str | None]],
 ) -> set[tuple[str, str]]:
     return {
         _get_file_status_key(file_name)
-        for file_name, action, _row_count, _table_name in upload_log_entries
+        for file_name, _rows_read, action, _rows_added, _table_name in upload_log_entries
         if action != ACTION_SKIPPED
     }
 
@@ -291,8 +297,11 @@ def _format_file_date(file_date: str) -> str:
 
 def _get_skipped_log_entries(
     file_paths: Iterable[Path],
-) -> list[tuple[str, str, int | None, str | None]]:
-    return [(file_path.name, ACTION_SKIPPED, None, None) for file_path in file_paths]
+) -> list[tuple[str, int | None, str, int | None, str | None]]:
+    return [
+        (file_path.name, None, ACTION_SKIPPED, None, None)
+        for file_path in file_paths
+    ]
 
 
 def _get_logged_file_name(line: str) -> str:
@@ -305,15 +314,21 @@ def _get_logged_file_name(line: str) -> str:
 
 def _format_upload_log_entry(
     file_name: str,
+    rows_read: int | None,
     action: str,
-    row_count: int | None,
+    rows_added: int | None,
     table_name: str | None,
 ) -> str:
     logged_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"{logged_at} : {file_name} -> {action}"
+    log_entry = f"{logged_at} : {file_name}"
 
-    if row_count is not None:
-        log_entry = f"{log_entry} -> {row_count} rows"
+    if rows_read is not None:
+        log_entry = f"{log_entry} -> {rows_read} rows read"
+
+    log_entry = f"{log_entry} -> {action}"
+
+    if rows_added is not None:
+        log_entry = f"{log_entry} -> {rows_added} rows added"
 
     if table_name:
         log_entry = f"{log_entry} -> {table_name}"
@@ -337,25 +352,27 @@ def _is_inside_directory(file_path: Path, directory: Path) -> bool:
 def push_processed_files(
     connection,
     processed_files: dict[str, list[ProcessedFile]],
-) -> list[tuple[str, str, int | None, str | None]]:
+) -> list[tuple[str, int | None, str, int | None, str | None]]:
     """Insert all processed files and commit once everything succeeds."""
     upload_log_entries = []
 
     try:
         for table_name, files_for_table in processed_files.items():
             for processed_file in files_for_table:
+                rows_read = len(processed_file.data)
                 action = push_dataframe(connection, table_name, processed_file.data)
                 if action:
                     upload_log_entries.append(
                         (
                             processed_file.file_path.name,
+                            rows_read,
                             action,
-                            len(processed_file.data),
+                            rows_read,
                             table_name,
                         )
                     )
                 print(
-                    f"Inserted {len(processed_file.data)} rows from "
+                    f"Inserted {rows_read} rows from "
                     f"{processed_file.file_path.name} into {table_name}"
                 )
 
