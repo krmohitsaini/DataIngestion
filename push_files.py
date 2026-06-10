@@ -642,8 +642,16 @@ def _sanitize_column_name(column) -> str:
         column_name = f"COLUMN_{column_name}"
 
     column_name = COLUMN_NAME_REPLACEMENTS.get(column_name, column_name)
+    column_name = _strip_tracking_suffix(column_name)
 
     _validate_identifier(column_name)
+    return column_name
+
+
+def _strip_tracking_suffix(column_name: str) -> str:
+    """Remove trailing analytics suffixes such as _E19_EVENT19 or _V2_EVAR2."""
+    column_name = re.sub(r"_E\d+_EVENT\d+$", "", column_name)
+    column_name = re.sub(r"_V\d+_EVAR\d+$", "", column_name)
     return column_name
 
 

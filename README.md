@@ -35,7 +35,8 @@ into `APP_SAMPLE_FILE`.
 
 CSV and Excel headers are sanitized before Oracle tables are created or rows
 are inserted. For example, `BP Account v111 (evar111)` becomes
-`BP_ACCOUNT_V111_EVAR111`. Reserved or project-specific replacements can be
+`BP_ACCOUNT`. Trailing analytics suffixes such as `_E19_EVENT19` and
+`_V12_EVAR12` are removed. Reserved or project-specific replacements can be
 added to `COLUMN_NAME_REPLACEMENTS` in `push_files.py`. By default, `DATE`
 becomes `EVENT_DATE`.
 
