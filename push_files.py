@@ -32,6 +32,7 @@ COLUMN_LENGTH_LIMITS = {
     "SAMPLE_ACCOUNT_ID": 10,
     "SAMPLE_CUSTOMER_ID": 8,
 }
+
 COLUMN_TYPE_OVERRIDES = {
     "BP_STATUS": "VARCHAR2(65)",
 }
@@ -618,7 +619,8 @@ def create_table(connection, table_name: str, dataframe: pd.DataFrame) -> None:
     _validate_date_added_column(column_names)
 
     for column, column_name in zip(dataframe.columns, column_names):
-        oracle_type = _get_oracle_type(dataframe[column])
+        #oracle_type = _get_oracle_type(dataframe[column])
+        oracle_type = _get_column_oracle_type(column_name, dataframe[column])
         column_definitions.append(f"{column_name} {oracle_type}")
 
     column_definitions.append(f"{DATE_ADDED_COLUMN} DATE")
@@ -634,16 +636,16 @@ def _get_oracle_type(series: pd.Series) -> str:
     """Map a pandas column to a simple Oracle data type."""
     if pd.api.types.is_bool_dtype(series):
         return "CHAR(1)"
+    
     """
-    # Commented these so these should go as VARCHAR2, but can be easily changed back if needed.
-    if pd.api.types.is_integer_dtype(series):
-        return "NUMBER"
-
     if pd.api.types.is_float_dtype(series):
         return "NUMBER"
     """
     if pd.api.types.is_datetime64_any_dtype(series):
         return "DATE"
+    
+    if pd.api.types.is_integer_dtype(series):
+        return "NUMBER"
 
     max_length = series.dropna().astype(str).str.len().max()
     max_length = 1 if pd.isna(max_length) else int(max_length)
@@ -653,6 +655,19 @@ def _get_oracle_type(series: pd.Series) -> str:
 
     max_length = max(255, max_length)
     return f"VARCHAR2({max_length})"
+
+def _get_column_oracle_type(column_name: str, series: pd.Series) -> str:
+    override_type = COLUMN_TYPE_OVERRIDES.get(column_name)
+    if override_type:
+        _validate_column_type_override(column_name, override_type)
+        return override_type
+
+    return _get_oracle_type(series)
+
+
+def _validate_column_type_override(column_name: str, oracle_type: str) -> None:
+    if ";" in oracle_type or "--" in oracle_type or "/*" in oracle_type:
+        raise ValueError(f"Invalid Oracle type override for {column_name}: {oracle_type}")
 
 
 def _sanitize_column_names(columns) -> list[str]:
