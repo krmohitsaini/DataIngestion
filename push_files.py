@@ -26,6 +26,15 @@ COLUMN_NAME_REPLACEMENTS = {
     "DATE": "EVENT_DATE",
 }
 
+# Add final Oracle column names and maximum allowed lengths here.
+# Rows where these columns exceed the configured length are skipped before insert.
+COLUMN_LENGTH_LIMITS = {
+    "SAMPLE_ACCOUNT_ID": 10,
+    "SAMPLE_CUSTOMER_ID": 8,
+}
+COLUMN_TYPE_OVERRIDES = {
+    "BP_STATUS": "VARCHAR2(65)",
+}
 
 def push_files(
     file_paths: str | Path | Iterable[str | Path],
@@ -398,14 +407,15 @@ def push_processed_files(
         for table_name, files_for_table in processed_files.items():
             for processed_file in files_for_table:
                 rows_read = len(processed_file.data)
-                action = push_dataframe(connection, table_name, processed_file.data)
-                if action:
+                result = push_dataframe(connection, table_name, processed_file.data)
+                if result:
+                    action, rows_added = result
                     upload_log_entries.append(
                         (
                             processed_file.file_path.name,
                             rows_read,
                             action,
-                            rows_read,
+                            rows_added,
                             table_name,
                         )
                     )
@@ -478,7 +488,11 @@ def _get_archive_destination(
     return destination
 
 
-def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> str | None:
+def push_dataframe(
+    connection,
+    table_name: str,
+    dataframe: pd.DataFrame,
+) -> tuple[str, int] | None:
     """Create the target table when needed, then insert one DataFrame."""
     if dataframe.empty:
         return None
@@ -504,15 +518,57 @@ def push_dataframe(connection, table_name: str, dataframe: pd.DataFrame) -> str 
     insert_sql = f"INSERT INTO {table_name} ({column_list}) VALUES ({bind_variables})"
 
     date_added = datetime.now()
-    rows = [
-        tuple(_to_oracle_value(value) for value in row) + (date_added,)
-        for row in dataframe.itertuples(index=False, name=None)
-    ]
+    rows, excluded_count = _get_insert_rows(dataframe, columns, date_added)
 
-    with connection.cursor() as cursor:
-        cursor.executemany(insert_sql, rows)
+    if excluded_count:
+        print(
+            f"Skipped {excluded_count} rows from {table_name}: "
+            "configured column length limit exceeded"
+        )
 
-    return action
+    if rows:
+        with connection.cursor() as cursor:
+            cursor.executemany(insert_sql, rows)
+
+    return action, len(rows)
+
+
+def _get_insert_rows(
+    dataframe: pd.DataFrame,
+    columns: list[str],
+    date_added: datetime,
+) -> tuple[list[tuple], int]:
+    """Build insert rows while excluding rows that exceed length limits."""
+    rows = []
+    excluded_count = 0
+
+    for row in dataframe.itertuples(index=False, name=None):
+        if _row_exceeds_length_limit(row, columns):
+            excluded_count += 1
+            continue
+
+        rows.append(tuple(_to_oracle_value(value) for value in row) + (date_added,))
+
+    return rows, excluded_count
+
+
+def _row_exceeds_length_limit(row: tuple, columns: list[str]) -> bool:
+    for column_name, value in zip(columns, row):
+        max_length = COLUMN_LENGTH_LIMITS.get(column_name)
+        if max_length is None:
+            continue
+
+        if _value_exceeds_length(value, max_length):
+            return True
+
+    return False
+
+
+def _value_exceeds_length(value, max_length: int) -> bool:
+    if pd.isna(value) or isinstance(value, str) and not value.strip():
+        return False
+
+    return len(str(value).strip()) > max_length
 
 
 def table_exists(connection, table_name: str) -> bool:

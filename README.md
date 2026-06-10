@@ -40,6 +40,19 @@ are inserted. For example, `BP Account v111 (evar111)` becomes
 added to `COLUMN_NAME_REPLACEMENTS` in `push_files.py`. By default, `DATE`
 becomes `EVENT_DATE`.
 
+Rows can be excluded before Oracle insert when configured columns exceed a
+maximum length. Add final Oracle column names to `COLUMN_LENGTH_LIMITS` in
+`push_files.py`:
+
+```python
+COLUMN_LENGTH_LIMITS = {
+    "SAMPLE_ACCOUNT_ID": 10,
+}
+```
+
+If `SAMPLE_ACCOUNT_ID` has more than 10 characters in one row, only that row is
+skipped. The text log still shows rows read and rows actually added.
+
 Add source-file date headers to `DATE_COLUMN_NAMES` in `process_files.py`.
 Matching is case-insensitive and ignores surrounding spaces. Configured
 columns accept Excel datetime values and these text formats:
